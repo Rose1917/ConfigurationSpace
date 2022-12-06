@@ -22,6 +22,8 @@ pub type _DepJson = HashMap<String,Vec<ConfigEle>>;
 pub type DepJson = HashMap<String,ConfigEle>;
 
 const TYPE_FILTER:&'static [&'static str] = &["bool", "tristate"];
+pub type ParsingErr = Err<&'static str>;
+pub type ParsingResult<T> = Result<T,ParsingErr>
 
 pub fn preprocess(raw_json:_DepJson) ->DepJson{
     let mut res = DepJson::new();
@@ -39,3 +41,7 @@ pub fn preprocess(raw_json:_DepJson) ->DepJson{
     res
 }
 
+pub fn dimacs_trans(dep_obj:DepJson) ->String{
+    
+    "todo".to_owned()
+}
