@@ -8,7 +8,7 @@ use std::fs;
 use serde_json::Result;
 
 use json2model::{ConfigEle,DepJson,_DepJson};
-use json2model::{preprocess, dimacs_trans};
+use json2model::{preprocess, exact_config, create_variables, dimacs_trans};
 
 fn parse(file_path:&Path) ->Option<String>{
     let file_path = file_path.to_str().unwrap();
@@ -29,8 +29,21 @@ fn parse(file_path:&Path) ->Option<String>{
     let parse_res = parse_res.unwrap();
     let parse_res = preprocess(parse_res);
 
+    //debug
     for config in parse_res.keys(){
         info!("{}", config);
+    }
+
+    //extract all the configurations
+    let (index2config,config2index) = exact_config(&parse_res);
+
+    //create as many variables as the config set
+    let (creator,gariables) = create_variables(index2config.len());
+
+    //TODO:tristate
+    for config in index2config.iter(){
+        let cur_item = &parse_res[config];
+        let bool_formula = parse_formula(config,cur_item,&variables,&config2index);
     }
 
     let dimacs_res = dimacs_trans(parse_res);
@@ -44,7 +57,7 @@ fn main() {
     let dep_jsons: Vec<String> = std::env::args().collect();
     let dep_jsons = &dep_jsons[1..].to_owned(); //since the json format only has one
                                                               //element in the disctionary for each
-                                                              //config
+                                                              
     if dep_jsons.len() == 0{
         println!("json2model is used to convert upstream json files to models");
         println!("usage:json2model dep1.json [dep2.lua [dep3.json]]..");
