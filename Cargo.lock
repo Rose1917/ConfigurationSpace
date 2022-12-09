@@ -96,6 +96,7 @@ dependencies = [
  "cnfgen",
  "env_logger",
  "log",
+ "regex",
  "rustlogic",
  "serde",
  "serde_json",

@@ -1,0 +1,27 @@
+{
+    "X" : [
+        {
+            "type":"bool",
+            "dep":"Y&&Z",
+            "rev_select":"",
+            "restrict":""
+        }
+    ],
+    "Y" : [
+        {
+            "type":"bool",
+            "dep":"",
+            "rev_select":"",
+            "restrict":""
+        }
+    ],
+
+    "Z" : [
+        {
+            "type":"bool",
+            "dep":"",
+            "rev_select":"",
+            "restrict":""
+        }
+    ]
+}

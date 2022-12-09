@@ -8,7 +8,11 @@ use std::fs;
 use serde_json::Result;
 
 use json2model::{ConfigEle,DepJson,_DepJson};
-use json2model::{preprocess, exact_config, create_variables, dimacs_trans};
+use json2model::{preprocess, exact_config, create_variables, parse_formula, parse_cnf, dimacs_trans};
+
+use cnfgen::boolexpr::BoolExprNode;
+use cnfgen::boolexpr::BoolImpl;
+use cnfgen::writer::CNFWriter;
 
 fn parse(file_path:&Path) ->Option<String>{
     let file_path = file_path.to_str().unwrap();
@@ -38,17 +42,59 @@ fn parse(file_path:&Path) ->Option<String>{
     let (index2config,config2index) = exact_config(&parse_res);
 
     //create as many variables as the config set
-    let (creator,gariables) = create_variables(index2config.len());
+    let (creator,variables) = create_variables(index2config.len());
 
     //TODO:tristate
+    let mut res_cnf:Vec<BoolExprNode<i32>> = vec![];
+
     for config in index2config.iter(){
+        error!("cur config:{}", config);
         let cur_item = &parse_res[config];
-        let bool_formula = parse_formula(config,cur_item,&variables,&config2index);
+        
+        let dep_formula = parse_formula(&cur_item.dep);
+        let rev_formula = parse_formula(&cur_item.rev_select);
+        error!("dep_formula:{:?}", dep_formula);
+
+        if dep_formula.is_some(){
+            let dep_nodes = parse_cnf(dep_formula.unwrap(), &variables, &config2index);
+            res_cnf.push(variables[config2index[config]].clone().imp(dep_nodes.clone()));
+            error!("dep nodes");
+            dep_nodes.write(&mut CNFWriter::new(std::io::stdout()));
+            res_cnf[0].write(&mut CNFWriter::new(std::io::stdout()));
+            error!("{:?}", dep_nodes);
+        }else if cur_item.dep.is_empty(){
+            info!("empty depency");
+            // do nothing
+        }
+        else{
+            warn!("we have encounter an error while parsing dep_str for config {}", config);
+            warn!("the error expr is {}", &cur_item.dep);
+            warn!("skipping...");
+        }
+
+        if rev_formula.is_some(){
+            let rev_nodes = parse_cnf(rev_formula.unwrap(), &variables, &config2index);
+            res_cnf.push(variables[config2index[config]].clone().imp(rev_nodes));
+            // error!("{:?}", rev_nodes);
+        }else if cur_item.rev_select.is_empty(){
+            info!("empty rev select");
+            // do nothing
+        }else{
+            warn!("we have encounter an error while parsing rev_select for config {}", config);
+            warn!("the error expr is {}", &cur_item.rev_select);
+            warn!("skipping...");
+        }
     }
 
-    let dimacs_res = dimacs_trans(parse_res);
-    debug!("{dimacs_res}");
-    Some(dimacs_res)
+    let mut final_dimacs = res_cnf[0].clone();
+    for i in 1..res_cnf.len(){
+        error!("i:{}", i);
+        final_dimacs = final_dimacs.clone() ^ res_cnf[i].clone();
+    }
+
+    error!("{:?}", final_dimacs);
+    final_dimacs.write(&mut CNFWriter::new(std::io::stdout()));
+    Some("".to_owned())
 }
 
 fn main() {
