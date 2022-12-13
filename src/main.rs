@@ -56,12 +56,7 @@ fn parse(file_path:&Path) ->Option<String>{
         error!("dep_formula:{:?}", dep_formula);
 
         if dep_formula.is_some(){
-            let dep_nodes = parse_cnf(dep_formula.unwrap(), &variables, &config2index);
-            res_cnf.push(variables[config2index[config]].clone().imp(dep_nodes.clone()));
-            error!("dep nodes");
-            dep_nodes.write(&mut CNFWriter::new(std::io::stdout()));
-            res_cnf[0].write(&mut CNFWriter::new(std::io::stdout()));
-            error!("{:?}", dep_nodes);
+            let dep_nodes = parse_cnf(Box::new(dep_formula.unwrap()));
         }else if cur_item.dep.is_empty(){
             info!("empty depency");
             // do nothing
@@ -73,8 +68,7 @@ fn parse(file_path:&Path) ->Option<String>{
         }
 
         if rev_formula.is_some(){
-            let rev_nodes = parse_cnf(rev_formula.unwrap(), &variables, &config2index);
-            res_cnf.push(variables[config2index[config]].clone().imp(rev_nodes));
+            let rev_nodes = parse_cnf(Box::new(rev_formula.unwrap()));
             // error!("{:?}", rev_nodes);
         }else if cur_item.rev_select.is_empty(){
             info!("empty rev select");
@@ -93,7 +87,6 @@ fn parse(file_path:&Path) ->Option<String>{
     }
 
     error!("{:?}", final_dimacs);
-    final_dimacs.write(&mut CNFWriter::new(std::io::stdout()));
     Some("".to_owned())
 }
 

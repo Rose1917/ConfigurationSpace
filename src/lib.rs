@@ -13,7 +13,6 @@ use serde::Deserialize;
 
 use cnfgen::boolexpr_creator::ExprCreator32;
 use cnfgen::boolexpr::BoolExprNode;
-use cnfgen::writer::CNFWriter;
 
 use rustlogic::LogicNode;
 
@@ -34,6 +33,7 @@ pub type DepJson = HashMap<String,ConfigEle>;
 const TYPE_FILTER:&'static [&'static str] = &["bool", "tristate"];
 const ILLEGAL_CHAR:&'static [&'static str] = &["[", "]", "=", "y"];
 
+pub mod utils;
 pub fn preprocess(raw_json:_DepJson) ->DepJson {
     let mut res = DepJson::new();
     debug!("before preprocess: {} items", raw_json.len());
@@ -121,48 +121,104 @@ pub fn parse_formula(bool_expr:&str) ->Option<rustlogic::LogicNode>{
 
 }
 
-pub fn parse_cnf(dep_formula:LogicNode, vars:&Vec<BoolExprNode<i32>>,config2index:&HashMap<String,usize>) ->BoolExprNode<i32>{
-    let dep_clone = dep_formula.clone();
-    match dep_formula{
+pub fn parse_cnf(cur_expr:Box<LogicNode>) ->Box<LogicNode>{
+    let cur_expr = utils::optimize(cur_expr);
+    match *(cur_expr.clone()) {
         LogicNode::And(left_node, rigt_node) =>{
-            error!("and parse_cnf:{:?}", dep_clone);
-            let left_cnf = parse_cnf(*left_node, vars, config2index);
-            let rigt_cnf = parse_cnf(*rigt_node, vars, config2index);
-            error!("and left:{:?}", left_cnf);
-            error!("and right:{:?}", rigt_cnf);
-            let res = (left_cnf & rigt_cnf);
-            res.write(&mut CNFWriter::new(std::io::stdout()));
-            return res;
+            let left_cnf = parse_cnf(left_node);
+            let rigt_cnf = parse_cnf(rigt_node);
+            return Box::new(LogicNode::And(left_cnf, rigt_cnf));
         },
+
         LogicNode::Or(left_node, rigt_node) =>{
-            error!("or parse_cnf:{:?}", dep_clone);
-            let left_cnf = parse_cnf(*left_node, vars, config2index);
-            let rigt_cnf = parse_cnf(*rigt_node, vars, config2index);
-            return left_cnf|rigt_cnf;
+            // Or(Variable("B"), And(Variable("D"), Variable("E")))
+            let left_cnf = parse_cnf(left_node);
+            let rigt_cnf = parse_cnf(rigt_node);
+
+            let flatten_left = utils::flatten_cnf(left_cnf); 
+            // B
+            let flatten_rigt = utils::flatten_cnf(rigt_cnf);
+            //D E
+
+            let mut res_vec:Vec<LogicNode> = vec![];
+            for left_item in &flatten_left{
+                for rigt_item in &flatten_rigt{
+                    res_vec.push(LogicNode::Or(left_item.to_owned(),rigt_item.to_owned()));
+                }
+            }
+            //BD BE
+            
+            let res = res_vec.iter().
+                fold(LogicNode::True, |acc, x|-> LogicNode{LogicNode::And(Box::new(acc), Box::new(x.clone()))});
+            return utils::optimize(Box::new(res));
         },
+
+        LogicNode::And(left_node, rigt_node) =>{
+            let left_cnf = parse_cnf(left_node);
+            let rigt_cnf = parse_cnf(rigt_node);
+            return utils::optimize(Box::new(LogicNode::And(left_cnf, rigt_cnf)));
+        },
+
         LogicNode::Not(node) =>{
-            error!("not parse_cnf:{:?}", dep_clone);
-            return !parse_cnf(*node, vars, config2index);
+            match *node{
+                LogicNode::Not(not_node) =>{
+                    return not_node;
+                },
+                // not (A and B) => (not A) or (not B)
+                LogicNode::And(left, rigt) =>{
+                    return parse_cnf(Box::new(LogicNode::Or(Box::new(LogicNode::Not(left)), Box::new(LogicNode::Not(rigt)))));
+                },
+                //not (A or B) => 
+                LogicNode::Or(left, rigt) =>{
+                   return parse_cnf(Box::new(LogicNode::Or(Box::new(LogicNode::Not(left)), Box::new(LogicNode::Not(rigt)))));
+                },
+
+                //not true
+                LogicNode::True => {
+                    return Box::new(LogicNode::False);
+                },
+
+                //not false
+                LogicNode::False => {
+                    return Box::new(LogicNode::True);
+                },
+
+                LogicNode::Variable(_) => {
+                    return cur_expr;
+                },
+            };
         },
 
         LogicNode::Variable(v) =>{
-            error!("var parse_cnf:{:?}", dep_clone);
-            let var_index = config2index.get(&v);
-            if var_index.is_none(){
-                error!("{} is in rev or select string, but can not be found in the entry json", v);
-                return vars[0].clone();
-            }
+            return cur_expr;
+        },
 
-            return vars[*var_index.unwrap()].clone();
-        }
+        LogicNode::True => {
+            return cur_expr;
+        },
 
-        _ => {
-            error!("unknown type of logic node");
-            return vars[0].clone();
+        LogicNode::False => {
+            return cur_expr;
         }
     }
 }
 
 pub fn dimacs_trans(dep_obj:DepJson) ->String{
     "todo".to_owned()
+}
+
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+    #[test]
+    fn test_parse(){
+        let p = parse_formula("A&&(B||(D&&E))");
+        println!("{:?}", p.clone().unwrap());
+        let v = parse_cnf(Box::new(p.unwrap()));
+        println!("{:?}", *v);
+    }
+
+
+
 }
