@@ -15,6 +15,10 @@ use cnfgen::boolexpr_creator::ExprCreator32;
 use cnfgen::boolexpr::BoolExprNode;
 
 use rustlogic::LogicNode;
+use varisat::CnfFormula;
+use varisat::ExtendFormula;
+use varisat::dimacs::write_dimacs;
+use varisat::{Var, Lit};
 
 
 
@@ -51,8 +55,36 @@ pub fn preprocess(raw_json:_DepJson) ->DepJson {
 }
 
 //exact and sort
-pub fn exact_config(dep:&DepJson) -> (Vec<String>,HashMap<String, usize>){
-    let mut config_set:Vec<String> = dep.keys().cloned().collect();
+pub fn exact_config(expr:Box<LogicNode>) -> (Vec<String>, HashMap<String, usize>){
+    let mut names = HashMap::new();
+    let mut un_resolved:Vec<Box<LogicNode>> = vec![];
+
+    //init
+    un_resolved.push(expr);
+    while !un_resolved.is_empty() {
+        let cur_node = un_resolved.pop().unwrap();
+        match *cur_node{
+            LogicNode::And(l,r) => {
+                un_resolved.push(l);
+                un_resolved.push(r);
+            },
+            LogicNode::Or(l,r) => {
+                un_resolved.push(l);
+                un_resolved.push(r);
+            },
+            LogicNode::Not(node) => {
+                un_resolved.push(node);
+            },
+            LogicNode::Variable(name) =>{
+                names.insert(name,true);
+            },
+            _ => {
+                unreachable!();
+            }
+        }
+    }
+
+    let mut config_set:Vec<String> = names.keys().cloned().collect();
     config_set.sort();
     for config in config_set.iter(){
         debug!("{config}");
@@ -124,21 +156,13 @@ pub fn parse_formula(bool_expr:&str) ->Option<rustlogic::LogicNode>{
 pub fn parse_cnf(cur_expr:Box<LogicNode>) ->Box<LogicNode>{
     let cur_expr = utils::optimize(cur_expr);
     match *(cur_expr.clone()) {
-        LogicNode::And(left_node, rigt_node) =>{
-            let left_cnf = parse_cnf(left_node);
-            let rigt_cnf = parse_cnf(rigt_node);
-            return Box::new(LogicNode::And(left_cnf, rigt_cnf));
-        },
-
         LogicNode::Or(left_node, rigt_node) =>{
             // Or(Variable("B"), And(Variable("D"), Variable("E")))
             let left_cnf = parse_cnf(left_node);
             let rigt_cnf = parse_cnf(rigt_node);
 
             let flatten_left = utils::flatten_cnf(left_cnf); 
-            // B
             let flatten_rigt = utils::flatten_cnf(rigt_cnf);
-            //D E
 
             let mut res_vec:Vec<LogicNode> = vec![];
             for left_item in &flatten_left{
@@ -146,17 +170,21 @@ pub fn parse_cnf(cur_expr:Box<LogicNode>) ->Box<LogicNode>{
                     res_vec.push(LogicNode::Or(left_item.to_owned(),rigt_item.to_owned()));
                 }
             }
-            //BD BE
             
-            let res = res_vec.iter().
-                fold(LogicNode::True, |acc, x|-> LogicNode{LogicNode::And(Box::new(acc), Box::new(x.clone()))});
-            return utils::optimize(Box::new(res));
+            println!("{:?}", res_vec);
+            let init = res_vec[0].clone();
+            println!("{:?}", init);
+            let res = res_vec.iter().skip(1).
+                fold(init, |acc:LogicNode, x:&LogicNode|->LogicNode{LogicNode::And(Box::new(acc), Box::new(x.clone()))});
+                // reduce(|acc, x|-> LogicNode{LogicNode::And(&Box::new(acc), x.clone())});
+            println!("{:?}", res);
+            return Box::new(res);
         },
 
         LogicNode::And(left_node, rigt_node) =>{
             let left_cnf = parse_cnf(left_node);
             let rigt_cnf = parse_cnf(rigt_node);
-            return utils::optimize(Box::new(LogicNode::And(left_cnf, rigt_cnf)));
+            return Box::new(LogicNode::And(left_cnf, rigt_cnf));
         },
 
         LogicNode::Not(node) =>{
@@ -213,12 +241,55 @@ mod tests{
     use super::*;
     #[test]
     fn test_parse(){
-        let p = parse_formula("A&&(B||(D&&E))");
+        let p = parse_formula("A&&(B||!(D&&E))");
+        // A && (B || !(D&&E))
+        // A && (B || (!D) || (!E))
         println!("{:?}", p.clone().unwrap());
+        let (names, config2index) = exact_config(Box::new(p.clone().unwrap()));
+        println!("names:{:?}", names);
+        println!("config2index:{:?}", config2index);
+
+        //transfer the bool expression to cnf
         let v = parse_cnf(Box::new(p.unwrap()));
+
+        //construct the dimacs all the variables
+        let mut formula = CnfFormula::new();
+        
+
+
+        let flat_cnf = utils::flatten_cnf(v.clone()) ;
+        for clause in flat_cnf{
+            // one clause
+            let flat_dnf = utils::flatten_dnf(clause);
+            let mut clause:Vec<varisat::Lit> = vec![];     
+            for node in flat_dnf{
+                match *node{
+                    LogicNode::Variable(v) =>{
+                        println!("variable {}", v);
+                        clause.push(varisat::Lit::from_dimacs((config2index[&v]+1) as isize));            
+                    },
+                    LogicNode::Not(not_node) =>{
+                        match *not_node {
+                            LogicNode::Variable(not_s) => {
+                               println!("not variable {}", not_s); 
+                               clause.push(varisat::Lit::from_dimacs(-((config2index[&not_s]+1) as isize)));            
+                            },
+                            _ => unreachable!()
+                        }
+                    },
+
+                    _ => unreachable!()
+                }
+            }
+
+            formula.add_clause(clause.as_slice());
+            println!("current clause: {:?}", clause);
+        }
         println!("{:?}", *v);
+        let mut implements_write = vec![];
+        write_dimacs(&mut implements_write, &formula);
+        let res = String::from_utf8(implements_write).unwrap();
+        println!("write res:\n{}", res);
     }
-
-
 
 }
