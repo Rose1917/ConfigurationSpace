@@ -1,13 +1,15 @@
 #[macro_use]
 extern crate log;
 
+use std::io::Write;
 use std::path::Path;
 use std::fs;
 
 
 use serde_json::Result;
 
-use json2model::{ConfigEle,DepJson,_DepJson};
+use json2model::structs::{ConfigEle,DepJson,_DepJson};
+use json2model::parser::{parse_json};
 use json2model::{preprocess, exact_config, create_variables, parse_formula, parse_cnf, dimacs_trans};
 
 use cnfgen::boolexpr::BoolExprNode;
@@ -16,27 +18,29 @@ use cnfgen::writer::CNFWriter;
 
 fn parse(file_path:&Path) ->Option<String>{
     let file_path = file_path.to_str().unwrap();
+
+    // parse the json file
     let file_str = fs::read_to_string(file_path)
-        .expect(&format!("an error occurred while reading {}, skipping...", file_path));
+        .expect(&format!("an error occurred while reading file {}, skipping...", file_path));
 
     debug!("file_str:{file_str}");
 
-    let parse_res:Result<_DepJson> = serde_json::from_str(&file_str);
+    let json_objs = parse_json(&file_str);
     
-    if let Err(e) = parse_res{
-        error!("parsing the file file_path failed");
-        error!("error:{:?}, skipping {}.", e, file_path); 
-        return None;
+    if let Err(e) = json_objs{
+        // note: it will only return the parse error
+        error!("parsing the json file error:{}", e); 
     };
 
+    let json_objs = json_objs.unwrap();
+
     //do the basic filter and unwrap
-    let parse_res = parse_res.unwrap();
     let parse_res = preprocess(parse_res);
 
     //debug
-    for config in parse_res.keys(){
-        info!("{}", config);
-    }
+    // for config in parse_res.keys(){
+    //     info!("{}", config);
+    // }
 
     //extract all the configurations
     // let (index2config,config2index) = exact_config(&parse_res);
@@ -45,7 +49,7 @@ fn parse(file_path:&Path) ->Option<String>{
     // let (creator,variables) = create_variables(index2config.len());
 
     //TODO:tristate
-    let mut res_cnf:Vec<BoolExprNode<i32>> = vec![];
+    // let mut res_cnf:Vec<BoolExprNode<i32>> = vec![];
 
     // for config in index2config.iter(){
     //     error!("cur config:{}", config);
@@ -91,22 +95,25 @@ fn parse(file_path:&Path) ->Option<String>{
 }
 
 fn main() {
-    env_logger::init();
 
-    let dep_jsons: Vec<String> = std::env::args().collect();
-    let dep_jsons = &dep_jsons[1..].to_owned(); //since the json format only has one
-                                                              //element in the disctionary for each
+    env_logger::builder()
+        .format(|buf, record| {
+             writeln!(buf, "{}: {}", record.level(), record.args())
+        })
+        .init();
+
+    let dep_files= &std::env::args().collect::<Vec<String>>()[1..];
                                                               
-    if dep_jsons.len() == 0{
+    if dep_files.len() == 0{
         println!("json2model is used to convert upstream json files to models");
         println!("usage:json2model dep1.json [dep2.lua [dep3.json]]..");
         std::process::exit(0);
     }
 
-    debug!("captured {} files to process", dep_jsons.len());
+    debug!("captured {} files to process", dep_files.len());
 
     /* process every single file */
-    for file in dep_jsons{
+    for file in dep_files{
         let file_path = Path::new(&file);
         if !file_path.exists(){
             println!("file {} does not exist.",file);

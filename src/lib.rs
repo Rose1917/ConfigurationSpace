@@ -21,37 +21,19 @@ use varisat::dimacs::write_dimacs;
 use varisat::{Var, Lit};
 
 
+use crate::structs::DepJson;
+use crate::structs::_DepJson;
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct ConfigEle{
-    #[serde(rename="type")]
-    pub type_:String,
-    pub rev_select:String,
-    pub dep:String,
-    pub restrict:String,
-}
 
-pub type _DepJson = HashMap<String,Vec<ConfigEle>>;
-pub type DepJson = HashMap<String,ConfigEle>;
 
-const TYPE_FILTER:&'static [&'static str] = &["bool", "tristate"];
-const ILLEGAL_CHAR:&'static [&'static str] = &["[", "]", "=", "y"];
+
 
 pub mod utils;
-pub fn preprocess(raw_json:_DepJson) ->DepJson {
-    let mut res = DepJson::new();
-    debug!("before preprocess: {} items", raw_json.len());
-    for (config,val) in raw_json.into_iter(){
-        let key = config;
-        let info = val[0].clone();
+pub mod structs;
+pub mod parser;
 
-        // filter the type of configuration
-        if TYPE_FILTER.contains(&info.type_.as_str()){
-            res.insert(key, info); 
-        }
-    }
-    debug!("after preprocess: {} items", res.len());
-    res
+pub fn preprocess(raw_json:_DepJson) ->DepJson {
+    DepJson::new()
 }
 
 //exact and sort
@@ -115,14 +97,6 @@ pub fn parse_formula(bool_expr:&str) ->Option<rustlogic::LogicNode>{
         info!("empty string");
         return None;
     }
-
-    for ch in ILLEGAL_CHAR{
-        if bool_expr.contains(ch){
-            info!("unsupported string:{}, contains {}", bool_expr, ch);
-            return None;
-        }
-    }
-
 
     // make it compatible to the rustlogic library
     let re = Regex::new("[a-zA-Z_0-9]+").unwrap();
