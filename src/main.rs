@@ -10,6 +10,7 @@ use serde_json::Result;
 
 use json2model::structs::{ConfigEle,DepJson,_DepJson};
 use json2model::parser::{parse_json};
+use json2model::utils::{preprocess};
 use json2model::{preprocess, exact_config, create_variables, parse_formula, parse_cnf, dimacs_trans};
 
 use cnfgen::boolexpr::BoolExprNode;
@@ -35,7 +36,7 @@ fn parse(file_path:&Path) ->Option<String>{
     let json_objs = json_objs.unwrap();
 
     //do the basic filter and unwrap
-    let parse_res = preprocess(parse_res);
+    let parse_res = preprocess(json_objs);
 
     //debug
     // for config in parse_res.keys(){

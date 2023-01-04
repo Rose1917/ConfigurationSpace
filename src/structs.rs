@@ -12,12 +12,10 @@ pub struct ConfigEle{
     pub restrict:String,
 }
 
-pub struct ConfigModel{
+pub struct ConfigSet{
     pub json_obj:DepJson,
     pub config2index:HashMap<String,usize>,
-    pub tristates:Vec<String>,
-    pub config_set:Vec<String>,
-    pub visible_set:Vec<String>,
+    pub tristate2index:HashMap<String,usize>,
 }
 
 pub type _DepJson = HashMap<String,Vec<ConfigEle>>;

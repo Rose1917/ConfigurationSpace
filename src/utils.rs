@@ -1,5 +1,5 @@
 use crate::structs::DepJson;
-use crate::structs::ConfigModel;
+use crate::structs::ConfigSet;
 
 use rustlogic::LogicNode;
 
@@ -98,41 +98,40 @@ pub fn optimize(expr:Box<LogicNode>) -> Box<LogicNode>{
 }
 
 //exact and sort
-pub fn gen_configs(json_obj:DepJson) -> ConfigModel{
-    let mut config_set:HashMap<String, bool> = HashMap::new();
-    let mut visible_set:HashMap<String, bool> = HashMap::new();
-    let mut tristate_set:HashMap<String, bool> = HashMap::new();
+pub fn preprocess(json_obj:DepJson) -> ConfigSet{
+    let mut config_set:Vec<String> = vec![];
+    let mut tristate_set:Vec<String> = vec![];
 
     for (config, info) in &json_obj{
-        config_set.insert(config.to_owned(), true);
+        config_set.push(config.to_owned());
         if info.type_ == "tristate"{
-            config_set.insert(format!("{}_MODULE",config), true);
-            tristate_set.insert(config.to_owned(), true);
-        }
-
-        if !info.dep.trim().is_empty(){
-            config_set.insert(format!("{}_VISIBLE", config), true);
-            visible_set.insert(config.to_owned(), true);
+            config_set.push(format!("{}_MODULE",config));
+            tristate_set.push(config.to_owned());
         }
     }
 
-    let mut config_set:Vec<String> = config_set.keys().cloned().collect();
     config_set.sort();
+    config_set.dedup();
 
     for config in config_set.iter(){
         trace!("{config}");
     }
 
     let mut config2index:HashMap<String, usize> = HashMap::new();
+    let mut tristate2index:HashMap<String, usize> = HashMap::new();
+
     for (i,config) in config_set.iter().enumerate(){
         config2index.insert(config.clone(), i);
+        if config.ends_with("_MODULE"){
+            tristate2index.insert(config.clone(), i);
+        }
     }
 
-    ConfigModel { 
+    ConfigSet { 
         json_obj,
         config2index,
-        tristates: tristate_set.keys().cloned().collect(),
-        config_set,
-        visible_set:visible_set.keys().cloned().collect()
+        tristate2index 
     }
 }
+
+pub fn parse_expr()

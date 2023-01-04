@@ -28,8 +28,8 @@ pub fn parse_json(json_str:&str) -> Result<DepJson, serde_json::Error>{
        let mut if_rev_valid = true;
        // filter the type of configuration
        if TYPE_FILTER.contains(&info.type_.as_str()){
-           trace!("unsupported data type:{} while parsing the config:{}", info.type_.as_str(), config.clone());
-           trace!("skipping...");
+           debug!("unsupported data type:{} while parsing the config:{}", info.type_.as_str(), config.clone());
+           debug!("skipping...");
            continue;
        }
 
